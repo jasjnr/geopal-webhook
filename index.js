@@ -1,30 +1,34 @@
-app.post('/geopal-hook', (req, res) => {
-  const job = req.body.job;
+app.post("/webhook", (req, res) => {
+  const { job } = req.body;
 
-  if (!job) {
-    console.log('❌ No "job" object found in the webhook.');
-    return res.status(400).send('Missing job data.');
+  // Ensure job and identifier exist
+  if (!job || !job.identifier) {
+    return res.status(400).send("Invalid job data");
   }
 
-  const id = job.id || 'Unknown';
-  const address = job.address || 'No address';
-  const status = job.status || 'Unknown';
-  const lat = parseFloat(job.lat);
-  const lng = parseFloat(job.lng);
+  // Extract map-relevant data
+  const jobId = job.identifier;
+  const lat = job.project?.address_lat;
+  const lng = job.project?.address_lng;
 
-  if (!isFinite(lat) || !isFinite(lng)) {
-    console.log(`⚠️ Job ${id} skipped: invalid coordinates.`);
-    return res.status(200).send('Ignored: no location');
-  }
+  // Optional fallback if GPS is embedded in workflow
+  // const gpsStep = job.job_workflows?.find(wf => wf.name.includes("GPS Coordinates"));
+  // const coords = gpsStep?.action_value_entered?.split(" ");
+  // const lat = coords?.[0];
+  // const lng = coords?.[1];
 
-  const jobEntry = { id, address, status, lat, lng };
+  const mapData = {
+    id: jobId,
+    lat,
+    lng,
+    status: job.job_status_id,
+    completed_at: job.updated_on,
+    inspector: `${job.employee?.first_name} ${job.employee?.last_name}`
+  };
 
-  // Check for duplicates (optional)
-  const exists = jobData.find(j => j.id === id);
-  if (!exists) {
-    jobData.push(jobEntry);
-    console.log(`📍 Job ${id} saved: ${address} [${lat}, ${lng}]`);
-  }
+  console.log("Received job data:", mapData);
 
-  res.status(200).send('Received');
+  // Save to database or memory or emit to frontend
+  // For now, just respond with success
+  res.status(200).send("Job received");
 });
