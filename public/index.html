@@ -13,24 +13,34 @@
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    const map = L.map('map').setView([53.3, -6.2], 8); // Default center (e.g., Dublin)
+    const map = L.map('map').setView([53.3, -6.2], 8); // Center on Ireland
+    const markers = {}; // Store markers by job ID
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
     async function loadJobs() {
-      const res = await fetch('/jobs');
-      const jobs = await res.json();
+      try {
+        const res = await fetch('/jobs');
+        const jobs = await res.json();
 
-      jobs.forEach(job => {
-        L.marker([job.lat, job.lng])
-          .addTo(map)
-          .bindPopup(`<b>Job #${job.id}</b><br>${job.address}<br>Status: ${job.status}`);
-      });
+        // Update markers
+        jobs.forEach(job => {
+          if (!markers[job.id]) {
+            const marker = L.marker([job.lat, job.lng])
+              .addTo(map)
+              .bindPopup(`<b>Job #${job.id}</b><br>${job.address}<br>Status: ${job.status}<br>Inspector: ${job.inspector}`);
+
+            markers[job.id] = marker;
+          }
+        });
+      } catch (error) {
+        console.error('Failed to load job data:', error);
+      }
     }
 
-    loadJobs();
+    loadJobs(); // initial load
     setInterval(loadJobs, 10000); // refresh every 10 seconds
   </script>
 </body>
