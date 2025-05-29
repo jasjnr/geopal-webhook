@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>GeoPal Job Map</title>
+  <meta charset="utf-8" />
+  <style>
+    #map { height: 100vh; }
+  </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([53.3, -6.2], 8); // Default center (e.g., Dublin)
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    async function loadJobs() {
+      const res = await fetch('/jobs');
+      const jobs = await res.json();
+
+      jobs.forEach(job => {
+        L.marker([job.lat, job.lng])
+          .addTo(map)
+          .bindPopup(`<b>Job #${job.id}</b><br>${job.address}<br>Status: ${job.status}`);
+      });
+    }
+
+    loadJobs();
+    setInterval(loadJobs, 10000); // refresh every 10 seconds
+  </script>
+</body>
+</html>
