@@ -1,34 +1,49 @@
-app.post("/webhook", (req, res) => {
-  const { job } = req.body;
+const express = require('express');
+const bodyParser = require('body-parser');
+const path = require('path');
 
-  // Ensure job and identifier exist
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+let jobData = [];
+
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.static('public'));  // serve frontend files
+
+// Serve the map
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Return stored jobs
+app.get('/jobs', (req, res) => {
+  res.json(jobData);
+});
+
+// GeoPal webhook endpoint
+app.post('/geopal-hook', (req, res) => {
+  const job = req.body.job;
+  const project = job?.project;
+
   if (!job || !job.identifier) {
-    return res.status(400).send("Invalid job data");
+    console.log('❌ Missing job or identifier field');
+    return res.status(400).send('Missing job.identifier');
   }
 
-  // Extract map-relevant data
-  const jobId = job.identifier;
-  const lat = job.project?.address_lat;
-  const lng = job.project?.address_lng;
+  const lat = parseFloat(project?.address_lat);
+  const lng = parseFloat(project?.address_lng);
 
-  // Optional fallback if GPS is embedded in workflow
-  // const gpsStep = job.job_workflows?.find(wf => wf.name.includes("GPS Coordinates"));
-  // const coords = gpsStep?.action_value_entered?.split(" ");
-  // const lat = coords?.[0];
-  // const lng = coords?.[1];
+  if (!isFinite(lat) || !isFinite(lng)) {
+    console.log(`⚠️ Job ${job.identifier} skipped: invalid or missing coordinates.`);
+    return res.status(200).send('Ignored: no lat/lng');
+  }
 
-  const mapData = {
-    id: jobId,
+  const jobEntry = {
+    id: job.identifier,
     lat,
     lng,
-    status: job.job_status_id,
-    completed_at: job.updated_on,
-    inspector: `${job.employee?.first_name} ${job.employee?.last_name}`
-  };
-
-  console.log("Received job data:", mapData);
-
-  // Save to database or memory or emit to frontend
-  // For now, just respond with success
-  res.status(200).send("Job received");
-});
+    address: project?.address || 'No address provided',
+    status: job.job_status_id || 'Unknown',
+    completed_at: job.updated_on || 'Unknown',
+    inspector: job.employee ? `${job.employee.first_name} ${job.employee.last_nam
