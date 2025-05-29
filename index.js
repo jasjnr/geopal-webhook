@@ -1,3 +1,17 @@
+const basicAuth = require('basic-auth');
+
+const auth = function (req, res, next) {
+  const user = basicAuth(req);
+  const validUser = 'admin';
+  const validPass = 'yourSecretPassword';
+
+  if (!user || user.name !== validUser || user.pass !== validPass) {
+    res.set('WWW-Authenticate', 'Basic realm="GeoPal Map"');
+    return res.status(401).send('Authentication required.');
+  }
+  next();
+};
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
