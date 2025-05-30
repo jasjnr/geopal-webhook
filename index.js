@@ -37,6 +37,7 @@ app.get('/jobs', auth, (req, res) => {
 
 // 🚀 Webhook for GeoPal Data Exchange (open access)
 app.post('/geopal-hook', (req, res) => {
+  console.log("📦 Full incoming payload from GeoPal:\n", JSON.stringify(req.body, null, 2));
   const job = req.body.job;
   const project = job?.project;
 
