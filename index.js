@@ -2,18 +2,16 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
 const basicAuth = require('basic-auth');
-const db = require('./db');
+const db = require('./db'); // database connection
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-let jobData = [];
-
-// 👤 Basic auth middleware
+// 🔐 Basic Auth Middleware
 const auth = function (req, res, next) {
   const user = basicAuth(req);
   const validUser = 'admin';
-  const validPass = 'mySecret123';
+  const validPass = 'mySecret123'; // ← change this to your secure password
 
   if (!user || user.name !== validUser || user.pass !== validPass) {
     res.set('WWW-Authenticate', 'Basic realm="GeoPal Map"');
@@ -24,19 +22,20 @@ const auth = function (req, res, next) {
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));  // serve frontend files
+app.use(express.static('public'));  // serve static files (index.html, etc.)
 
-// 🔐 Secure the map page
+// 🔐 Secure map page
 app.get('/', auth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // 🔐 Secure job data
 app.get('/jobs', auth, (req, res) => {
-  res.json(jobData);
+  const rows = db.prepare('SELECT * FROM jobs').all();
+  res.json(rows);
 });
 
-// ✅ GeoPal webhook endpoint
+// 🚀 Webhook for GeoPal Data Exchange (open access)
 app.post('/geopal-hook', (req, res) => {
   const job = req.body.job;
   const project = job?.project;
@@ -64,15 +63,27 @@ app.post('/geopal-hook', (req, res) => {
     inspector: job.employee ? `${job.employee.first_name} ${job.employee.last_name}` : 'Unknown'
   };
 
-  const exists = jobData.find(j => j.id === jobEntry.id);
-  if (!exists) {
-    jobData.push(jobEntry);
-    console.log(`✅ Stored job ${jobEntry.id} at [${lat}, ${lng}]`);
-  }
+  // Save to database if not already present
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO jobs (id, lat, lng, address, status, completed_at, inspector)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
 
+  insert.run(
+    jobEntry.id,
+    jobEntry.lat,
+    jobEntry.lng,
+    jobEntry.address,
+    jobEntry.status,
+    jobEntry.completed_at,
+    jobEntry.inspector
+  );
+
+  console.log(`✅ Stored job ${jobEntry.id} in database`);
   res.status(200).send('OK');
 });
 
+// Start the server
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
