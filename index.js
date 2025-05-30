@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 const auth = function (req, res, next) {
   const user = basicAuth(req);
   const validUser = 'admin';
-  const validPass = 'mySecret123'; // ← change this to your secure password
+  const validPass = 'mySecret123'; // ← Change this to your real password
 
   if (!user || user.name !== validUser || user.pass !== validPass) {
     res.set('WWW-Authenticate', 'Basic realm="GeoPal Map"');
@@ -22,7 +22,7 @@ const auth = function (req, res, next) {
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static('public'));  // serve static files (index.html, etc.)
+app.use(express.static('public'));  // Serve frontend files (index.html etc.)
 
 // 🔐 Secure map page
 app.get('/', auth, (req, res) => {
@@ -37,34 +37,49 @@ app.get('/jobs', auth, (req, res) => {
 
 // 🚀 Webhook for GeoPal Data Exchange (open access)
 app.post('/geopal-hook', (req, res) => {
-  console.log("📦 Full incoming payload from GeoPal:\n", JSON.stringify(req.body, null, 2));
   const job = req.body.job;
-  const project = job?.project;
+  const workflows = job?.job_workflows || [];
+  const jobFieldFiles = job?.job_field_files || [];
+  const statusMessages = jobFieldFiles[0]?.job_status_change_messages || [];
 
-  if (!job || !job.identifier) {
-    console.log('❌ Missing job or identifier field');
-    return res.status(400).send('Missing job.identifier');
+  // ✅ Get GPS from workflow (Jobfield_4 or containing "GPS")
+  let lat, lng;
+  const gpsStep = workflows.find(wf =>
+    wf.name.includes('GPS') || wf.name === 'Jobfield_4'
+  );
+
+  if (gpsStep?.action_value_entered) {
+    const coords = gpsStep.action_value_entered.trim().split(' ');
+    lat = parseFloat(coords[0]);
+    lng = parseFloat(coords[1]);
   }
 
-  const lat = parseFloat(project?.address_lat);
-  const lng = parseFloat(project?.address_lng);
+  if (!job?.identifier || !isFinite(lat) || !isFinite(lng)) {
+    console.log(`⚠️ Skipped job: missing identifier or invalid GPS`);
+    return res.status(200).send('Invalid job payload');
+  }
 
-  if (!isFinite(lat) || !isFinite(lng)) {
-    console.log(`⚠️ Job ${job.identifier} skipped: invalid or missing coordinates.`);
-    return res.status(200).send('Ignored: no lat/lng');
+  // ✅ Extract inspector name from HTML "By:" field
+  let inspector = 'Unassigned';
+  if (statusMessages.length > 0) {
+    const htmlMessage = statusMessages[0].message;
+    const match = htmlMessage.match(/<strong>By:<\/strong>\s*([^<]+)/);
+    if (match && match[1]) {
+      inspector = match[1].trim();
+    }
   }
 
   const jobEntry = {
     id: job.identifier,
     lat,
     lng,
-    address: project?.address || 'No address provided',
+    address: job?.project?.address || 'Unknown',
     status: job.job_status_id || 'Unknown',
     completed_at: job.updated_on || 'Unknown',
-    inspector: job.employee ? `${job.employee.first_name} ${job.employee.last_name}` : 'Unknown'
+    inspector
   };
 
-  // Save to database if not already present
+  // ✅ Save to database if not already stored
   const insert = db.prepare(`
     INSERT OR IGNORE INTO jobs (id, lat, lng, address, status, completed_at, inspector)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -80,7 +95,7 @@ app.post('/geopal-hook', (req, res) => {
     jobEntry.inspector
   );
 
-  console.log(`✅ Stored job ${jobEntry.id} in database`);
+  console.log(`✅ Stored job ${jobEntry.id} by ${inspector} at [${lat}, ${lng}]`);
   res.status(200).send('OK');
 });
 
